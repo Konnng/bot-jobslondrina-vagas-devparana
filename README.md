@@ -8,4 +8,9 @@ We developed this bot to search jobs there and post it on DevParaná's Slack (ht
 
 LICENSE: MIT
 
+Special Thanks to:
+
+* *Samuel Koch* - [@mumumilk](https://github.com/mumumilk)
+
+
 Made By Konng Agência Digital - http://www.konnng.com
