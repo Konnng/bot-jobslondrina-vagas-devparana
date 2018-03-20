@@ -29,7 +29,7 @@ let deferred = Q.defer()
 let deferredProcessing = Q.defer()
 let deferredFinal = Q.defer()
 let file4Tests = path.join(__dirname, 'jobs.rss')
-let sandBox = true
+let sandBox = false
 
 let feedUrl = 'http://jobslondrina.com/job-category/programador/feed/?emprego=show&estagio=show&freelance=show&temporario=show&action=Filter&location=Londrina'
 let feedRSSOptions = { customFields: {
@@ -109,35 +109,41 @@ try {
 
     try {
       const mainTitle = (jobs.length > 1 ? 'Vagas de trabalho encontradas' : 'Vaga de trabalho encontrada') + ' em *Londrina*. Confira!'
+      const slackQueue = jobs.map((item, index) => {
+        return () => new Promise((resolve, reject) => {
+          _log('Processing item ' + (index + 1))
 
-      jobs.forEach((item, index) => {
-        _log('Processing item ' + (index + 1))
+          let date = moment.unix(item.date).format('DD/MM/YYYY')
 
-        let date = moment.unix(item.date).format('DD/MM/YYYY')
+          _log(item.title, date)
+          _log('-'.repeat(100))
 
-        _log(item.title, date)
-        _log('-'.repeat(100))
-
-        let params = {
-          text: (index === 0 ? mainTitle + '\n\n\n' : '') +
-            `*${item.title}* - ${item.url}`
-        }
-
-        slack.webhook(params, (err, response) => {
-          if (err) {
-            throw err
+          let params = {
+            text: (index === 0 ? mainTitle + '\n\n\n' : '') +
+              `*${item.title}* - ${item.url}`
           }
-          if (response.statusCode === 200) {
-            _log('Done posting item ' + (index + 1))
-            _log('-'.repeat(100))
-            db.get('jobs').find({ id: item.id }).assign({ botProcessed: true, botProcessedDate: moment().unix() }).write()
-          } else {
-            throw new Error('Error processing item ' + (index + 1) + ': ' + response.statusCode + ': ' + response.statusMessage)
-          }
+
+          slack.webhook(params, (err, response) => {
+            if (err) {
+              return reject(err)
+            }
+            if (response.statusCode === 200) {
+              _log('Done posting item ' + (index + 1))
+              _log('-'.repeat(100))
+              db.get('jobs').find({ id: item.id }).assign({ botProcessed: true, botProcessedDate: moment().unix() }).write()
+
+              sleep(1000)
+              resolve(index)
+            } else {
+              reject(new Error('Error processing item ' + (index + 1) + ': ' + response.statusCode + ': ' + response.statusMessage))
+            }
+          })
         })
-        sleep(1000)
-        _log('-'.repeat(100))
       })
+
+      Array.from(Array(slackQueue.length).keys()).reduce((promise, next) => {
+        return promise.then(() => slackQueue[next]()).catch(err => { throw err })
+      }, Promise.resolve())
     } catch (err) {
       _log('ERROR: ', err)
       _log('-'.repeat(100))
