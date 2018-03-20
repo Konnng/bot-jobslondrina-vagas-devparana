@@ -28,10 +28,10 @@ let slack = new Slack()
 let deferred = Q.defer()
 let deferredProcessing = Q.defer()
 let deferredFinal = Q.defer()
-let htmlFileTests = path.join(__dirname, 'jobs.html')
-let sandBox = false
+let file4Tests = path.join(__dirname, 'jobs.rss')
+let sandBox = true
 
-let feedUrl = 'http://jobslondrina.com/?feed=job_feed&job_types=emprego%2Cestagio%2Cfreelancer%2Ctemporario&search_location&job_categories=programacao&search_keywords'
+let feedUrl = 'http://jobslondrina.com/job-category/programador/feed/?emprego=show&estagio=show&freelance=show&temporario=show&action=Filter&location=Londrina'
 let feedRSSOptions = { customFields: {
   item: [
     [ 'job_listing:job_type', 'job_type' ],
@@ -45,8 +45,8 @@ slack.setWebhook(slackWebHook)
 _log('Searching for new job offers...')
 
 try {
-  if (sandBox && fs.existsSync(htmlFileTests)) {
-    deferred.resolve(fs.readFileSync(htmlFileTests))
+  if (sandBox && fs.existsSync(file4Tests)) {
+    deferred.resolve(fs.readFileSync(file4Tests))
   } else {
     rssParser.parseURL(feedUrl, feedRSSOptions, (err, result) => {
       if (err) {
@@ -62,16 +62,16 @@ try {
   }
 
   Q.when(deferred.promise, jobs => {
-    let jobsOffers = jobs.map(item => {
-      let id = crypto.createHash('sha1').update(item.link).digest('hex')
-      let title = item.title
-      let url = item.link
-      let description = item.contentSnippet
-      let date = moment(item.pubDate).unix().toString()
-      let dateProcessed = moment().unix()
-      let botProcessed = false
-      let botProcessedDate = null
-      let company = item.company
+    const jobsOffers = jobs.map(item => {
+      const id = crypto.createHash('sha1').update(item.link).digest('hex')
+      const title = item.title
+      const url = item.link
+      const description = item.contentSnippet
+      const date = moment(item.pubDate).unix().toString()
+      const dateProcessed = moment().unix()
+      const botProcessed = false
+      const botProcessedDate = null
+      const company = ''
 
       return { id, title, date, company, dateProcessed, description, url, botProcessed, botProcessedDate }
     })
@@ -83,7 +83,7 @@ try {
   })
 
   Q.when(deferredProcessing.promise).then(jobs => {
-    let jobsBaseID = db.get('jobs').value().map(item => item.id)
+    const jobsBaseID = db.get('jobs').value().map(item => item.id)
 
     jobs.filter(item => {
       return jobsBaseID.indexOf(item.id) < 0
@@ -95,7 +95,7 @@ try {
   })
 
   Q.when(deferredFinal.promise).then(() => {
-    let jobs = db.get('jobs').filter({ botProcessed: false }).sortBy('date').reverse().value()
+    const jobs = Array.from(db.get('jobs').filter({ botProcessed: false }).sortBy('date').reverse().value())
 
     _log(`Found ${jobs.length} job offers.`)
 
@@ -108,6 +108,8 @@ try {
     _log('-'.repeat(100))
 
     try {
+      const mainTitle = (jobs.length > 1 ? 'Vagas de trabalho encontradas' : 'Vaga de trabalho encontrada') + ' em *Londrina*. Confira!'
+
       jobs.forEach((item, index) => {
         _log('Processing item ' + (index + 1))
 
@@ -117,13 +119,8 @@ try {
         _log('-'.repeat(100))
 
         let params = {
-          attachments: [{
-            title: `${item.title} - ${item.company}`,
-            title_link: item.url,
-            text: `Vaga: ${item.title}\nData: ${date}\nDetalhes: ${item.description}`,
-            color: '#7CD197'
-          }],
-          text: 'Vaga de trabalho encontrada. Confira! \n\n' + item.url
+          text: (index === 0 ? mainTitle + '\n\n\n' : '') +
+            `*${item.title}* - ${item.url}`
         }
 
         slack.webhook(params, (err, response) => {
